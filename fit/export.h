@@ -1,6 +1,14 @@
 #ifndef _EXPORT_
 #define _EXPORT_
 
+#include <glm/glm.hpp>
+using namespace glm;
+
+#include <iostream>
+#include <fstream>
+#include <iomanip>
+using namespace std;
+
 // export data to C
 void writeTabC(mat3 * tab, vec2 * tabMagFresnel, int N)
 {
@@ -144,6 +152,26 @@ void writeJS(vec4* data1, vec4* data2, int N)
         file << data2[i].w << ", " << endl;
     }
     file << "];" << endl;
+
+    file.close();
+}
+
+void writeCPP(vec4* data1, vec4* data2, int N) {
+    ofstream file("results/ltc.dat", ios::binary | ios::out);
+
+    file.write((char*)&N, sizeof(int));
+    for (int i = 0; i < N * N; i++) {
+        file.write((char*)&data1[i].x, sizeof(float));
+        file.write((char*)&data1[i].y, sizeof(float));
+        file.write((char*)&data1[i].z, sizeof(float));
+        file.write((char*)&data1[i].w, sizeof(float));
+    }
+    for (int i = 0; i < N * N; i++) {
+        file.write((char*)&data2[i].x, sizeof(float));
+        file.write((char*)&data2[i].y, sizeof(float));
+        file.write((char*)&data2[i].z, sizeof(float));
+        file.write((char*)&data2[i].w, sizeof(float));
+    }
 
     file.close();
 }

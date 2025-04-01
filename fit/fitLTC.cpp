@@ -185,87 +185,89 @@ void fitTab(mat3* tab, vec2* tabMagFresnel, const int N, const Brdf& brdf)
     LTC ltc;
 
     // loop over theta and alpha
-    for (int a = N - 1; a >=     0; --a)
-    for (int t =     0; t <= N - 1; ++t)
-    {
-        // parameterised by sqrt(1 - cos(theta))
-        float x = t/float(N - 1);
-        float ct = 1.0f - x*x;
-        float theta = std::min<float>(1.57f, acosf(ct));
-        const vec3 V = vec3(sinf(theta), 0, cosf(theta));
-
-        // alpha = roughness^2
-        float roughness = a/float(N - 1);
-        float alpha = std::max<float>(roughness*roughness, MIN_ALPHA);
-
-        cout << "a = " << a << "\t t = " << t  << endl;
-        cout << "alpha = " << alpha << "\t theta = " << theta << endl;
-        cout << endl;
-
-        vec3 averageDir;
-        computeAvgTerms(brdf, V, alpha, ltc.magnitude, ltc.fresnel, averageDir);
-
-        bool isotropic;
-
-        // 1. first guess for the fit
-        // init the hemisphere in which the distribution is fitted
-        // if theta == 0 the lobe is rotationally symmetric and aligned with Z = (0 0 1)
-        if (t == 0)
+    for (int a = N - 1; a >=     0; --a) {
+        for (int t =     0; t <= N - 1; ++t)
         {
-            ltc.X = vec3(1, 0, 0);
-            ltc.Y = vec3(0, 1, 0);
-            ltc.Z = vec3(0, 0, 1);
+            // parameterised by sqrt(1 - cos(theta))
+            float x = t/float(N - 1);
+            float ct = 1.0f - x*x;
+            float theta = std::min<float>(1.57f, acosf(ct));
+            const vec3 V = vec3(sinf(theta), 0, cosf(theta));
 
-            if (a == N - 1) // roughness = 1
+            // alpha = roughness^2
+            float roughness = a/float(N - 1);
+            float alpha = std::max<float>(roughness*roughness, MIN_ALPHA);
+
+            // cout << "a = " << a << "\t t = " << t  << endl;
+            // cout << "alpha = " << alpha << "\t theta = " << theta << endl;
+            // cout << endl;
+
+            vec3 averageDir;
+            computeAvgTerms(brdf, V, alpha, ltc.magnitude, ltc.fresnel, averageDir);
+
+            bool isotropic;
+
+            // 1. first guess for the fit
+            // init the hemisphere in which the distribution is fitted
+            // if theta == 0 the lobe is rotationally symmetric and aligned with Z = (0 0 1)
+            if (t == 0)
             {
-                ltc.m11 = 1.0f;
-                ltc.m22 = 1.0f;
+                ltc.X = vec3(1, 0, 0);
+                ltc.Y = vec3(0, 1, 0);
+                ltc.Z = vec3(0, 0, 1);
+
+                if (a == N - 1) // roughness = 1
+                {
+                    ltc.m11 = 1.0f;
+                    ltc.m22 = 1.0f;
+                }
+                else // init with roughness of previous fit
+                {
+                    ltc.m11 = tab[a + 1 + t*N][0][0];
+                    ltc.m22 = tab[a + 1 + t*N][1][1];
+                }
+
+                ltc.m13 = 0;
+                ltc.update();
+
+                isotropic = true;
             }
-            else // init with roughness of previous fit
+            // otherwise use previous configuration as first guess
+            else
             {
-                ltc.m11 = tab[a + 1 + t*N][0][0];
-                ltc.m22 = tab[a + 1 + t*N][1][1];
+                vec3 L = averageDir;
+                vec3 T1(L.z, 0, -L.x);
+                vec3 T2(0, 1, 0);
+                ltc.X = T1;
+                ltc.Y = T2;
+                ltc.Z = L;
+
+                ltc.update();
+
+                isotropic = false;
             }
 
-            ltc.m13 = 0;
-            ltc.update();
+            // 2. fit (explore parameter space and refine first guess)
+            float epsilon = 0.05f;
+            fit(ltc, brdf, V, alpha, epsilon, isotropic);
 
-            isotropic = true;
+            // copy data
+            tab[a + t*N] = ltc.M;
+            tabMagFresnel[a + t*N][0] = ltc.magnitude;
+            tabMagFresnel[a + t*N][1] = ltc.fresnel;
+
+            // kill useless coefs in matrix
+            tab[a+t*N][0][1] = 0;
+            tab[a+t*N][1][0] = 0;
+            tab[a+t*N][2][1] = 0;
+            tab[a+t*N][1][2] = 0;
+
+            // cout << tab[a+t*N][0][0] << "\t " << tab[a+t*N][1][0] << "\t " << tab[a+t*N][2][0] << endl;
+            // cout << tab[a+t*N][0][1] << "\t " << tab[a+t*N][1][1] << "\t " << tab[a+t*N][2][1] << endl;
+            // cout << tab[a+t*N][0][2] << "\t " << tab[a+t*N][1][2] << "\t " << tab[a+t*N][2][2] << endl;
+            // cout << endl;
         }
-        // otherwise use previous configuration as first guess
-        else
-        {
-            vec3 L = averageDir;
-            vec3 T1(L.z, 0, -L.x);
-            vec3 T2(0, 1, 0);
-            ltc.X = T1;
-            ltc.Y = T2;
-            ltc.Z = L;
-
-            ltc.update();
-
-            isotropic = false;
-        }
-
-        // 2. fit (explore parameter space and refine first guess)
-        float epsilon = 0.05f;
-        fit(ltc, brdf, V, alpha, epsilon, isotropic);
-
-        // copy data
-        tab[a + t*N] = ltc.M;
-        tabMagFresnel[a + t*N][0] = ltc.magnitude;
-        tabMagFresnel[a + t*N][1] = ltc.fresnel;
-
-        // kill useless coefs in matrix
-        tab[a+t*N][0][1] = 0;
-        tab[a+t*N][1][0] = 0;
-        tab[a+t*N][2][1] = 0;
-        tab[a+t*N][1][2] = 0;
-
-        cout << tab[a+t*N][0][0] << "\t " << tab[a+t*N][1][0] << "\t " << tab[a+t*N][2][0] << endl;
-        cout << tab[a+t*N][0][1] << "\t " << tab[a+t*N][1][1] << "\t " << tab[a+t*N][2][1] << endl;
-        cout << tab[a+t*N][0][2] << "\t " << tab[a+t*N][1][2] << "\t " << tab[a+t*N][2][2] << endl;
-        cout << endl;
+        cout << "a = " << a << " finished!" << endl;
     }
 }
 
@@ -392,6 +394,7 @@ int main(int argc, char* argv[])
     writeTabC(tab, tabMagFresnel, N);
     writeDDS(tex1, tex2, N);
     writeJS(tex1, tex2, N);
+    writeCPP(tex1, tex2, N);
 
     // spherical plots
     // make_spherical_plots(brdf, tab, N);
